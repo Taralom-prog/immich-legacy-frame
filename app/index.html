@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Frame">
+<title>Photo frame</title>
+<!--
+  This page must run on Safari 9 (iOS 9, e.g. iPad 2/3/mini 1).
+  So: ES5 only (var, function, XMLHttpRequest), no let/const/arrow functions/fetch/Promise
+  syntax, no CSS object-fit, no CSS grid.
+-->
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden;
+    font-family: -apple-system, Helvetica, Arial, sans-serif; color: #fff;
+    -webkit-user-select: none; -webkit-touch-callout: none; }
+
+  /* Stacking order, bottom to top: blurred video background, video, photo layers, overlays */
+  #video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: transparent; z-index: 1; }
+  #vbg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; display: none; }
+  .layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;
+    background-color: #000; overflow: hidden;
+    opacity: 0; -webkit-transition: opacity 1s; transition: opacity 1s; }
+  .layer.on { opacity: 1; }
+  .layer.top { z-index: 3; }
+  .fg, .bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background-position: center; background-repeat: no-repeat; }
+  /* Blurred background: a small thumbnail, enlarged, blurred and darkened (cheap for old GPUs) */
+  .bg { background-size: cover; display: none;
+    -webkit-filter: blur(16px) brightness(0.65); filter: blur(16px) brightness(0.65);
+    -webkit-transform: scale(1.15); transform: scale(1.15); }
+
+  #caption { position: absolute; left: 20px; bottom: 20px; z-index: 6; display: none;
+    font-size: 19px; color: rgba(255,255,255,0.92); padding: 6px 14px; border-radius: 16px;
+    background: rgba(0,0,0,0.35); text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    opacity: 0; -webkit-transition: opacity 0.8s; transition: opacity 0.8s; }
+  #caption.on { opacity: 1; }
+  #clock { position: absolute; right: 24px; bottom: 18px; z-index: 6; font-size: 44px; font-weight: 300;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.8); display: none; }
+  #start { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10;
+    text-align: center; }
+  #start div { position: absolute; top: 42%; width: 100%; font-size: 30px; color: #ddd; }
+  #start small { display: block; margin-top: 14px; font-size: 17px; color: #888; }
+  #msg { position: absolute; left: 0; right: 0; top: 46%; text-align: center; z-index: 5; color: #888;
+    font-size: 20px; }
+</style>
+</head>
+<body>
+<div id="vbg" class="bg"></div>
+<video id="video" preload="auto" webkit-playsinline playsinline></video>
+<div id="a" class="layer"><div class="bg"></div><div class="fg"></div></div>
+<div id="b" class="layer"><div class="bg"></div><div class="fg"></div></div>
+<div id="msg"></div>
+<div id="caption"></div>
+<div id="clock"></div>
+<div id="start"><div><span id="startText"></span><small id="startHint"></small></div></div>
+
+<script>
+(function () {
+  // Replaced by the server with the settings from .env
+  var CFG = /*CONFIG*/{};
+  var T = CFG.strings || {};
+  var PHOTO_MS = (CFG.photoSeconds || 10) * 1000;
+  var MAX_VIDEO_MS = (CFG.maxVideoSeconds || 60) * 1000;
+  var START_TIMEOUT_MS = 20000;   // a video that has not started after this is skipped
+  var BATCH = 20;                 // items fetched per request
+  var REFILL_BELOW = 5;           // fetch more when the queue gets this short
+
+  var $ = function (id) { return document.getElementById(id); };
+  var video = $('video'), vbg = $('vbg'), caption = $('caption'), clockEl = $('clock');
+  var startEl = $('start'), msgEl = $('msg');
+  var layers = [$('a'), $('b')];
+
+  var queue = [];          // items waiting to be shown
+  var loading = false;     // a batch request is in flight
+  var waiting = [];        // callbacks to run when that request finishes
+  var front = 0;           // index of the photo layer currently on top
+  var timer = null;        // the one pending "go to next item" timer
+  var current = null;      // item on screen (or loading)
+  var seq = 0;             // increases with every item; stale callbacks compare against it
+  var started = false;
+  var shown = 0, videoErrors = 0;
+
+  $('startText').innerHTML = T.tapToStart || 'Tap the screen to start';
+  $('startHint').innerHTML = T.tapToStartHint || '';
+  video.muted = !CFG.videoSound;
+  if (!CFG.videoSound) { video.setAttribute('muted', ''); }
+
+  // Send a line to the server log (visible with `docker logs`). Fire-and-forget.
+  function log(m) {
+    try { new Image().src = '/log?m=' + encodeURIComponent(m) + '&r=' + new Date().getTime(); } catch (e) {}
+  }
+  function clearTimer() { if (timer) { clearTimeout(timer); timer = null; } }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ---------------------------------------------------------------- queue
+  function fetchBatch(cb) {
+    if (cb) { waiting.push(cb); }
+    if (loading) { return; }
+    loading = true;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/batch?n=' + BATCH + '&r=' + new Date().getTime(), true);
+    xhr.timeout = 20000;
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) { return; }
+      loading = false;
+      if (xhr.status === 200) {
+        try {
+          var items = JSON.parse(xhr.responseText);
+          for (var i = 0; i < items.length; i++) { queue.push(items[i]); }
+        } catch (e) { log('invalid batch JSON'); }
+      } else {
+        log('batch HTTP ' + xhr.status);
+      }
+      var cbs = waiting;
+      waiting = [];
+      for (var j = 0; j < cbs.length; j++) { cbs[j](); }
+    };
+    xhr.send();
+  }
+
+  function next() {
+    clearTimer();
+    seq += 1;
+    if (queue.length < REFILL_BELOW) { fetchBatch(); }
+    if (!queue.length) {
+      if (!current) { msgEl.innerHTML = T.connecting || ''; }
+      var mySeq = seq;
+      // Nothing to show yet: wait for the batch, then retry (30 s later if it was empty)
+      fetchBatch(function () {
+        if (mySeq === seq) { timer = setTimeout(next, queue.length ? 0 : 30000); }
+      });
+      return;
+    }
+    msgEl.innerHTML = '';
+    var item = queue.shift();
+    shown += 1;
+    if (item.type === 'video') { showVideo(item); } else { showPhoto(item); }
+  }
+
+  // ---------------------------------------------------------------- caption (date · place)
+  // The server only sends `date` / `place` when SHOW_DATE / SHOW_PLACE are on
+  function showCaption(item) {
+    var parts = [];
+    if (item && item.date) { parts.push(escapeHtml(item.date)); }
+    if (item && item.place) { parts.push(escapeHtml(item.place)); }
+    var html = parts.join(' &middot; ');
+    caption.className = '';                    // fade out…
+    setTimeout(function () {                   // …swap the text, fade back in
+      if (!html) { caption.style.display = 'none'; return; }
+      caption.innerHTML = html;
+      caption.style.display = 'block';
+      setTimeout(function () { caption.className = 'on'; }, 30);
+    }, 400);
+  }
+
+  // ---------------------------------------------------------------- layout helpers
+  // True when the media and the screen have different orientations
+  // (e.g. a landscape photo on a portrait frame): it is then shown whole on a blurred background.
+  function orientationMismatch(w, h) {
+    if (!w || !h) { return false; }
+    var screenPortrait = window.innerHeight > window.innerWidth;
+    return (w > h) === screenPortrait;
+  }
+
+  function child(layer, cls) {
+    var c = layer.childNodes;
+    for (var i = 0; i < c.length; i++) { if (c[i].className === cls) { return c[i]; } }
+    return null;
+  }
+
+  function fillLayer(layer, id, blurred) {
+    var fg = child(layer, 'fg'), bg = child(layer, 'bg');
+    fg.style.backgroundImage = 'url(/img/' + id + ')';
+    if (blurred) {
+      fg.style.backgroundSize = 'contain';
+      bg.style.backgroundImage = 'url(/thumb/' + id + ')';
+      bg.style.display = 'block';
+    } else {
+      fg.style.backgroundSize = CFG.cropPhotos ? 'cover' : 'contain';
+      bg.style.display = 'none';
+      bg.style.backgroundImage = 'none';
+    }
+  }
+
+  function emptyLayer(layer) {
+    child(layer, 'fg').style.backgroundImage = 'none';
+    var bg = child(layer, 'bg');
+    bg.style.backgroundImage = 'none';
+    bg.style.display = 'none';
+  }
+
+  // Safari 9 has no object-fit. To make a video "cover" the screen we size the <video>
+  // element ourselves with the video's aspect ratio, centered; the overflow is clipped.
+  var videoCover = false;
+  function layoutVideo(cover) {
+    videoCover = cover;
+    var s = video.style;
+    var W = window.innerWidth, H = window.innerHeight;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    if (!cover || !vw || !vh) {
+      s.width = '100%'; s.height = '100%'; s.left = '0'; s.top = '0';
+      return;
+    }
+    var k = Math.max(W / vw, H / vh);
+    var w = Math.ceil(vw * k), h = Math.ceil(vh * k);
+    s.width = w + 'px'; s.height = h + 'px';
+    s.left = Math.round((W - w) / 2) + 'px'; s.top = Math.round((H - h) / 2) + 'px';
+  }
+  window.addEventListener('resize', function () {
+    if (current && current.type === 'video') { layoutVideo(videoCover); }
+  }, false);
+
+  // ---------------------------------------------------------------- photos
+  function stopVideo() {
+    layoutVideo(false);
+    vbg.style.display = 'none';
+    vbg.style.backgroundImage = 'none';
+    video.pause();
+    video.removeAttribute('src');
+    try { video.load(); } catch (e) {}   // frees the decoder and its memory (1 GB of RAM on an iPad 3)
+  }
+
+  function showPhoto(item) {
+    var fromVideo = current && current.type === 'video';
+    current = item;
+    var mySeq = seq;
+    var img = new Image();   // preload, then swap layers once it is in the browser cache
+    img.onload = function () {
+      if (mySeq !== seq) { return; }   // the user skipped ahead meanwhile
+      clearTimer();
+      var back = 1 - front;
+      fillLayer(layers[back], item.id, orientationMismatch(img.width, img.height));
+      showCaption(item);
+      // The new photo fades in on top. After a photo, the previous one stays visible
+      // underneath for a cross-fade; after a video, the video itself is underneath.
+      layers[back].className = 'layer on top';
+      layers[front].className = fromVideo ? 'layer' : 'layer on';
+      var old = front;
+      front = back;
+      setTimeout(function () {
+        if (mySeq !== seq) { return; }
+        layers[old].className = 'layer';
+        emptyLayer(layers[old]);
+        if (fromVideo) { stopVideo(); }   // only once the photo fully covers it
+      }, 1200);
+      if (!fromVideo) { stopVideo(); }
+      timer = setTimeout(next, PHOTO_MS);
+    };
+    img.onerror = function () {
+      if (mySeq !== seq) { return; }
+      clearTimer();
+      log('photo failed ' + item.id);
+      timer = setTimeout(next, 500);
+    };
+    // Safety net: skip a photo that never loads
+    timer = setTimeout(function () {
+      if (mySeq !== seq) { return; }
+      log('photo timed out ' + item.id);
+      next();
+    }, START_TIMEOUT_MS);
+    img.src = '/img/' + item.id;
+  }
+
+  // ---------------------------------------------------------------- videos
+  // One single <video> element is reused for every video: on iOS 9 only an element that
+  // was started by a user tap may play later without one (see unlockVideo below).
+  function showVideo(item) {
+    current = item;
+    var mySeq = seq;
+    video.src = '/vid/' + item.id;
+    video.load();
+    var p = video.play();
+    if (p && p.then) { p.then(null, function (e) { log('play() refused: ' + e); }); }
+    timer = setTimeout(function () {
+      if (mySeq !== seq) { return; }
+      videoErrors += 1;
+      log('video did not start ' + item.id);
+      next();
+    }, START_TIMEOUT_MS);
+  }
+
+  var playingSeq = -1;   // 'playing' fires again after every buffering stall: react only once
+  video.addEventListener('playing', function () {
+    if (!current || current.type !== 'video' || playingSeq === seq) { return; }
+    playingSeq = seq;
+    var mySeq = seq;
+    clearTimer();
+    showCaption(current);
+    if (orientationMismatch(video.videoWidth, video.videoHeight)) {
+      // whole video on a blurred background (the video's thumbnail)
+      vbg.style.backgroundImage = 'url(/thumb/' + current.id + ')';
+      vbg.style.display = 'block';
+      layoutVideo(false);
+    } else {
+      vbg.style.display = 'none';
+      vbg.style.backgroundImage = 'none';
+      layoutVideo(CFG.cropPhotos);
+    }
+    // The video sits below the photo layers: fading them out reveals it
+    layers[0].className = 'layer';
+    layers[1].className = 'layer';
+    setTimeout(function () {
+      if (mySeq === seq) { emptyLayer(layers[0]); emptyLayer(layers[1]); }
+    }, 1200);
+    var limit = MAX_VIDEO_MS;
+    if (current.duration) { limit = Math.min(limit, current.duration * 1000 + 15000); }
+    timer = setTimeout(next, limit);
+  });
+  video.addEventListener('ended', function () {
+    if (current && current.type === 'video') { next(); }
+  });
+  video.addEventListener('error', function () {
+    if (!current || current.type !== 'video' || !video.getAttribute('src')) { return; }
+    videoErrors += 1;
+    log('video failed ' + current.id + ' code ' + (video.error ? video.error.code : '?'));
+    next();
+  });
+
+  // ---------------------------------------------------------------- clock
+  function tick() {
+    var d = new Date();
+    var m = d.getMinutes();
+    clockEl.innerHTML = d.getHours() + ':' + (m < 10 ? '0' : '') + m;
+  }
+  if (CFG.showClock) { clockEl.style.display = 'block'; tick(); setInterval(tick, 10000); }
+
+  // ---------------------------------------------------------------- start
+  // iOS 9 blocks video.play() unless it happens inside a user gesture. Calling play() once
+  // during the first tap "unlocks" this <video> element for the rest of the page's life.
+  function unlockVideo() {
+    if (!video.getAttribute('src')) { video.src = '/blank.mp4'; video.load(); }  // needs a source to count
+    var p = video.play();
+    if (p && p.then) { p.then(null, function () {}); }
+    if (!current || current.type !== 'video') { video.pause(); }
+  }
+
+  function onTouch(ev) {
+    if (ev && ev.preventDefault) { ev.preventDefault(); }
+    unlockVideo();
+    if (!started) {
+      started = true;
+      startEl.style.display = 'none';
+      log('started - ' + navigator.userAgent);
+    }
+    next();   // any later tap skips to the next item
+  }
+  document.addEventListener('touchend', onTouch, false);
+  document.addEventListener('click', function (e) { if (!('ontouchend' in window)) { onTouch(e); } }, false);
+
+  // Hourly summary in the server log
+  setInterval(function () { log('summary: ' + shown + ' items shown, ' + videoErrors + ' video errors'); }, 3600000);
+
+  fetchBatch();
+})();
+</script>
+</body>
+</html>

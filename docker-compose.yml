@@ -1,0 +1,12 @@
+services:
+  immich-legacy-frame:
+    build: .
+    container_name: immich-legacy-frame
+    restart: unless-stopped
+    ports:
+      - "5050:8080"          # open http://<this-machine>:5050 on the old device
+    env_file: .env
+    volumes:
+      - ./cache:/cache       # converted videos (about 9 MB per video on average)
+    security_opt:
+      - no-new-privileges:true
