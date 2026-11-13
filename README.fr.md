@@ -19,8 +19,16 @@ marchent pas du tout dessus, ou se contentent des photos. Celui-ci a été écri
 - 🔐 **Votre clé d'API reste sur votre serveur** : l'appareil ne parle qu'à ce petit relais
 - 🪶 Un seul petit conteneur, sans autre dépendance que Python et ffmpeg
 
-Testé avec un iPad 3 (iOS 9.3.5) et Immich v3.3.5. Devrait marcher sur tout appareil avec
-Safari 9 ou plus récent, donc aussi sur les iPad, téléphones et navigateurs récents.
+Testé avec un iPad 3 (iOS 9.3.5) et Immich v3.3.5. Devrait marcher sur tout iPad sous
+iOS 9 ou plus récent, et dans tout navigateur moderne. (Sur iOS 9, les iPhone lisent les
+vidéos en plein écran hors d'une appli web ajoutée à l'écran d'accueil ; ce projet ne
+cherche pas à contourner ça.)
+
+Si votre appareil a un navigateur moderne, un projet plus complet comme
+[ImmichFrame](https://github.com/immichFrame/ImmichFrame) ou
+[immich-kiosk](https://github.com/damongolding/immich-kiosk) vous conviendra peut-être
+mieux. Celui-ci se concentre sur les appareils bloqués sous iOS 9, et sur des vidéos
+fluides dessus.
 
 ## Démarrage rapide
 
@@ -70,7 +78,7 @@ détaillé du [README anglais](README.md#configuration)). Appliquez les changeme
 ## Place disque et processeur
 
 - **Disque** : environ 9 Mo par vidéo en moyenne dans `./cache`, jusqu'à ~25 Mo pour une
-  vidéo coupée à 60 s (par exemple 1 300 vidéos ≈ 11 Go). Pendant la conversion,
+  vidéo coupée à 60 s (par exemple 1 300 vidéos ≈ 12 Go). Pendant la conversion,
   l'original est téléchargé dans `./cache/tmp` : gardez aussi de la place pour votre plus
   grosse vidéo. Les vidéos retirées de l'album sont supprimées du cache à la vérification
   suivante. Changer un réglage de conversion reconvertit toutes les vidéos,
@@ -98,4 +106,4 @@ commencent par `frame>`). Le tableau de dépannage complet est dans le
 
 ## Licence
 
-[MIT](LICENSE). Ce projet n'est pas affilié à Immich.
+[MIT](LICENSE). Ce projet n'est pas affilié à Immich ; Immich est une marque de ses propriétaires.

@@ -85,7 +85,7 @@ SHOW_DATE = env_bool("SHOW_DATE", True)
 SHOW_PLACE = env_bool("SHOW_PLACE", True)
 DEBUG_LOG = env_bool("DEBUG_LOG", True)
 
-# Video conversion (see README: "Why convert videos?")
+# Video conversion (see "How it works" in the README)
 CACHE_DIR = env_str("CACHE_DIR", "/cache")
 VIDEO_MAX_SIDE = env_int("VIDEO_MAX_SIDE", 1280)
 VIDEO_MAXRATE = env_str("VIDEO_MAXRATE", "3M")
@@ -458,7 +458,7 @@ def converter_loop():
             sync_cache(failed)
             delay = 30
             time.sleep(RESCAN_MINUTES * 60)
-        except Exception as e:  # noqa: BLE001 - Immich down, disk full… try again later
+        except Exception as e:  # Immich down, disk full… try again later
             log(f"conversion paused ({e}), retrying in {delay} s")
             time.sleep(delay)
             delay = min(delay * 2, RESCAN_MINUTES * 60)
@@ -526,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_body(404, b"not found")
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True  # the device moved on (next photo, video skipped…)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log(f"ERROR {path}: {e}")
             if self.headers_sent:
                 # Part of a response is already out: the only clean way out is to hang up

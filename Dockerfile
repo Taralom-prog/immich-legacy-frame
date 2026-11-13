@@ -1,4 +1,4 @@
-FROM python:3.12-alpine3.20
+FROM python:3.12-alpine3.23
 
 # ffmpeg converts the album's videos into a format old devices can play smoothly;
 # su-exec lets the entrypoint drop root privileges

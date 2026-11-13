@@ -21,6 +21,11 @@ Tested with an iPad 3 (iOS 9.3.5) and Immich v3.3.5. It should work on any iPad 
 iOS 9 or later and in any modern browser. (iPhones on iOS 9 play videos full screen
 outside a home-screen web app, which this project does not try to work around.)
 
+If your device runs a modern browser, a full-featured project such as
+[ImmichFrame](https://github.com/immichFrame/ImmichFrame) or
+[immich-kiosk](https://github.com/damongolding/immich-kiosk) may suit you better. This one
+focuses on devices stuck on iOS 9, and on playing videos smoothly there.
+
 ## How it works
 
 ```
@@ -98,7 +103,7 @@ All settings live in `.env`. Apply changes with `docker compose up -d`.
 | `RESCAN_MINUTES` | `60` | How often the album is checked for new or removed videos |
 | `FFMPEG_THREADS` | `2` | CPU cores used while converting (ffmpeg runs at the lowest priority) |
 | `PUID` / `PGID` | `1000` | Owner of the `./cache` folder on the host (run `id` to see yours) |
-| `DEBUG_LOG` | `true` | Show the device's own messages in `docker compose logs` |
+| `DEBUG_LOG` | `true` | Show the frame's own messages in `docker compose logs` |
 
 Changing one of the video conversion settings converts every video again, automatically.
 
@@ -108,7 +113,7 @@ inside the container: leave it alone.)
 ## Disk and CPU usage
 
 - **Disk**: about 9 MB per video on average in `./cache`, up to ~25 MB for a video that
-  reaches the 60 s cut (for example, 1,300 videos ≈ 11 GB). While a video is converted,
+  reaches the 60 s cut (for example, 1,300 videos ≈ 12 GB). While a video is converted,
   its original is downloaded to `./cache/tmp`, so keep room for your largest video too.
   Videos removed from the album are deleted from the cache at the next check.
 - **CPU**: the first conversion of a big album takes a while (about 10 s per video on 2
@@ -163,4 +168,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## License
 
-[MIT](LICENSE). This project is not affiliated with Immich.
+[MIT](LICENSE). This project is not affiliated with Immich; Immich is a trademark of its owners.
