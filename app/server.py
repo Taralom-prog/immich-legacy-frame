@@ -99,6 +99,10 @@ PAGE_CONFIG = {
     "maxVideoSeconds": env_int("MAX_VIDEO_SECONDS", 60),
     "videoSound": env_bool("VIDEO_SOUND", False),
     "cropPhotos": env_bool("CROP_PHOTOS", True),
+    # Media whose orientation differs from the screen (e.g. landscape on a portrait frame):
+    # false = whole, on a blurred background; true = cropped to fill the screen
+    "cropOtherPhotos": env_bool("CROP_OTHER_ORIENTATION_PHOTOS", False),
+    "cropOtherVideos": env_bool("CROP_OTHER_ORIENTATION_VIDEOS", False),
     "showClock": env_bool("SHOW_CLOCK", False),
 }
 

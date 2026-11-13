@@ -159,8 +159,9 @@
   }
 
   // ---------------------------------------------------------------- layout helpers
-  // True when the media and the screen have different orientations
-  // (e.g. a landscape photo on a portrait frame): it is then shown whole on a blurred background.
+  // True when the media and the screen have different orientations (e.g. a landscape photo
+  // on a portrait frame). Such media is shown whole on a blurred background, or cropped to
+  // fill the screen with CROP_OTHER_ORIENTATION_PHOTOS / CROP_OTHER_ORIENTATION_VIDEOS.
   function orientationMismatch(w, h) {
     if (!w || !h) { return false; }
     var screenPortrait = window.innerHeight > window.innerWidth;
@@ -173,7 +174,8 @@
     return null;
   }
 
-  function fillLayer(layer, id, blurred) {
+  // blurred: whole photo on a blurred background; otherwise cover (crop) or contain (bars)
+  function fillLayer(layer, id, blurred, cover) {
     var fg = child(layer, 'fg'), bg = child(layer, 'bg');
     fg.style.backgroundImage = 'url(/img/' + id + ')';
     if (blurred) {
@@ -181,7 +183,7 @@
       bg.style.backgroundImage = 'url(/thumb/' + id + ')';
       bg.style.display = 'block';
     } else {
-      fg.style.backgroundSize = CFG.cropPhotos ? 'cover' : 'contain';
+      fg.style.backgroundSize = cover ? 'cover' : 'contain';
       bg.style.display = 'none';
       bg.style.backgroundImage = 'none';
     }
@@ -234,7 +236,12 @@
       if (mySeq !== seq) { return; }   // the user skipped ahead meanwhile
       clearTimer();
       var back = 1 - front;
-      fillLayer(layers[back], item.id, orientationMismatch(img.width, img.height));
+      var otherOrientation = orientationMismatch(img.width, img.height);
+      if (otherOrientation && CFG.cropOtherPhotos) {
+        fillLayer(layers[back], item.id, false, true);   // crop to fill the screen
+      } else {
+        fillLayer(layers[back], item.id, otherOrientation, CFG.cropPhotos);
+      }
       showCaption(item);
       // The new photo fades in on top. After a photo, the previous one stays visible
       // underneath for a cross-fade; after a video, the video itself is underneath.
@@ -291,7 +298,8 @@
     var mySeq = seq;
     clearTimer();
     showCaption(current);
-    if (orientationMismatch(video.videoWidth, video.videoHeight)) {
+    var otherOrientation = orientationMismatch(video.videoWidth, video.videoHeight);
+    if (otherOrientation && !CFG.cropOtherVideos) {
       // whole video on a blurred background (the video's thumbnail)
       vbg.style.backgroundImage = 'url(/thumb/' + current.id + ')';
       vbg.style.display = 'block';
@@ -299,7 +307,7 @@
     } else {
       vbg.style.display = 'none';
       vbg.style.backgroundImage = 'none';
-      layoutVideo(CFG.cropPhotos);
+      layoutVideo(otherOrientation ? true : CFG.cropPhotos);   // crop to fill the screen
     }
     // The video sits below the photo layers: fading them out reveals it
     layers[0].className = 'layer';

@@ -14,7 +14,8 @@ marchent pas du tout dessus, ou se contentent des photos. Celui-ci a été écri
   sont jamais modifiés)
 - 🖼️ **Cadrage intelligent** : les photos dans le même sens que l'écran le remplissent ;
   les autres (une photo paysage sur un cadre vertical, par exemple) s'affichent en entier
-  sur un fond flou
+  sur un fond flou, ou recadrées pour remplir l'écran si vous préférez
+  (`CROP_OTHER_ORIENTATION_PHOTOS` / `CROP_OTHER_ORIENTATION_VIDEOS`)
 - 🗓️ **Encart avec la date** (et le lieu quand Immich le connaît), horloge en option
 - 🔐 **Votre clé d'API reste sur votre serveur** : l'appareil ne parle qu'à ce petit relais
 - 🪶 Un seul petit conteneur, sans autre dépendance que Python et ffmpeg

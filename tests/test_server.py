@@ -140,6 +140,8 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(resp.status, 200)
         self.assertNotIn(b"/*CONFIG*/{}", body)
         self.assertIn(b'"photoSeconds"', body)
+        self.assertIn(b'"cropOtherPhotos": false', body)
+        self.assertIn(b'"cropOtherVideos": false', body)
 
     def test_whole_video(self):
         resp, body = self.get(f"/vid/{ASSET}")

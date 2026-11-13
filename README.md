@@ -12,7 +12,8 @@ or fall back to photos only. This one was written for them:
 - 🐢 **Smooth video on old hardware**: videos are converted in the background to a light
   720p format the old chip decodes easily (your originals in Immich are never touched)
 - 🖼️ **Smart framing**: photos that match the screen's orientation fill it; the others
-  (e.g. a landscape photo on a portrait frame) are shown whole on a blurred background
+  (e.g. a landscape photo on a portrait frame) are shown whole on a blurred background,
+  or cropped to fill the screen if you prefer
 - 🗓️ **Date caption** (and place, when Immich knows it), optional clock
 - 🔐 **Your API key stays on your server**: the device only talks to this small proxy
 - 🪶 One small container, no dependencies besides Python and ffmpeg
@@ -94,6 +95,8 @@ All settings live in `.env`. Apply changes with `docker compose up -d`.
 | `MAX_VIDEO_SECONDS` | `60` | Longer videos are cut |
 | `VIDEO_SOUND` | `false` | Play the videos' sound |
 | `CROP_PHOTOS` | `true` | Fill the screen, or show whole photos with black bars |
+| `CROP_OTHER_ORIENTATION_PHOTOS` | `false` | Photos whose orientation differs from the screen (e.g. landscape on a portrait frame): `false` = whole on a blurred background, `true` = cropped to fill the screen |
+| `CROP_OTHER_ORIENTATION_VIDEOS` | `false` | Same, for videos |
 | `SHOW_DATE` | `true` | Caption with the date the photo was taken |
 | `SHOW_PLACE` | `true` | Add the city (or state, or country) to the caption |
 | `SHOW_CLOCK` | `false` | Small clock in the bottom right corner |
